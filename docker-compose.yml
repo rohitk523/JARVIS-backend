@@ -1,0 +1,103 @@
+version: "3.9"
+
+services:
+  # ── Redis ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── API Gateway (port 8000) ────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Voice Agent (LiveKit — no port mapping) ────────────────────────────
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── MCP Gateway (port 8001) ────────────────────────────────────────────
+  mcp-gateway:
+    build:
+      context: .
+      dockerfile: mcp_gateway/Dockerfile
+    ports:
+      - "8001:8001"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/mcp/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── CLI Bridge (port 8002) ─────────────────────────────────────────────
+  cli-bridge:
+    build:
+      context: .
+      dockerfile: cli_bridge/Dockerfile
+    ports:
+      - "8002:8002"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8002/cli/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── RAG Service (port 8003) ────────────────────────────────────────────
+  rag:
+    build:
+      context: .
+      dockerfile: rag/Dockerfile
+    ports:
+      - "8003:8003"
+    env_file: .env
+    volumes:
+      - rag_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8003/rag/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  redis_data:
+  rag_data:
